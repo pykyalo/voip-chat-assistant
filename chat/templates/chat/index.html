@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoIP Knowledge Assistant</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f5f5f5;
+            height: 100vh;
+            display: flex;
+        }
+        
+        .sidebar {
+            width: 300px;
+            background: white;
+            border-right: 1px solid #ddd;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        
+        .main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            background: white;
+            padding: 20px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        
+        .message {
+            margin-bottom: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            max-width: 80%;
+        }
+        
+        .message.user {
+            background: #007bff;
+            color: white;
+            margin-left: auto;
+        }
+        
+        .message.assistant {
+            background: white;
+            border: 1px solid #ddd;
+        }
+        
+        .input-area {
+            background: white;
+            padding: 20px;
+            border-top: 1px solid #ddd;
+        }
+        
+        .input-group {
+            display: flex;
+            gap: 10px;
+        }
+        
+        input[type="text"] {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        
+        button {
+            padding: 12px 24px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        button:hover {
+            background: #0056b3;
+        }
+        
+        .upload-form {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+        
+        .document-item {
+            padding: 10px;
+            background: white;
+            margin-bottom: 8px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .document-title {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .document-size {
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <h2 style="margin-bottom: 20px;">Knowledge Base</h2>
+        
+        <div class="upload-form">
+            <h3 style="margin-bottom: 10px; font-size: 16px;">Upload PDF</h3>
+            <form method="post" action="{% url 'upload_document' %}" enctype="multipart/form-data">
+                {% csrf_token %}
+                <input type="file" name="document" accept=".pdf" required style="margin-bottom: 10px; width: 100%;">
+                <input type="text" name="title" placeholder="Document title (optional)" style="margin-bottom: 10px; width: 100%;">
+                <button type="submit" style="width: 100%;">Upload</button>
+            </form>
+        </div>
+        
+        <h3 style="margin-bottom: 10px; font-size: 16px;">Documents ({{ documents.count }})</h3>
+        {% for doc in documents %}
+        <div class="document-item">
+            <div class="document-title">{{ doc.title }}</div>
+            <div class="document-size">{{ doc.uploaded_at|date:"M d, Y" }}</div>
+        </div>
+        {% empty %}
+        <p style="color: #666; font-size: 14px;">No documents uploaded yet</p>
+        {% endfor %}
+        
+        <form method="post" action="{% url 'clear_chat' %}" style="margin-top: 20px;">
+            {% csrf_token %}
+            <button type="submit" style="width: 100%; background: #dc3545;">Clear Chat</button>
+        </form>
+    </div>
+    
+    <div class="main">
+        <div class="header">
+            <h1>VoIP Knowledge Assistant</h1>
+            <p style="color: #666; margin-top: 8px;">Ask questions about SIP, FreeSWITCH, and VoIP</p>
+        </div>
+        
+        <div class="chat-container" id="chatContainer">
+            {% for message in messages %}
+            <div class="message {{ message.role }}">
+                <strong>{% if message.role == 'user' %}You{% else %}Assistant{% endif %}:</strong>
+                <div style="margin-top: 8px;">{{ message.content|linebreaks }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <div class="input-area">
+            <form id="chatForm">
+                {% csrf_token %}
+                <div class="input-group">
+                    <input type="text" 
+                           name="message" 
+                           id="messageInput" 
+                           placeholder="Ask about VoIP, SIP protocols, FreeSWITCH..." 
+                           required>
+                    <button type="submit">Send</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+        // Auto-scroll to bottom
+        const chatContainer = document.getElementById('chatContainer');
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+        
+        // Handle form submission with AJAX
+        document.getElementById('chatForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const messageInput = document.getElementById('messageInput');
+            const message = messageInput.value.trim();
+            
+            if (!message) return;
+            
+            // Add user message immediately
+            const userDiv = document.createElement('div');
+            userDiv.className = 'message user';
+            userDiv.innerHTML = `<strong>You:</strong><div style="margin-top: 8px;">${message}</div>`;
+            chatContainer.appendChild(userDiv);
+            
+            messageInput.value = '';
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            
+            // Send to server
+            const formData = new FormData();
+            formData.append('message', message);
+            formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+            
+            try {
+                const response = await fetch('{% url "send_message" %}', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                // Add assistant message
+                const assistantDiv = document.createElement('div');
+                assistantDiv.className = 'message assistant';
+                assistantDiv.innerHTML = `<strong>Assistant:</strong><div style="margin-top: 8px;">${data.assistant_response.replace(/\n/g, '<br>')}</div>`;
+                chatContainer.appendChild(assistantDiv);
+                
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            } catch (error) {
+                alert('Error sending message. Please try again.');
+            }
+        });
+    </script>
+</body>
+</html>
